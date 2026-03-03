@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Incredimaker Stage</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  </head>
+  <body>
+    <main class="app">
+      <section class="toolbar">
+        <label class="control">
+          <span>Incredibox</span>
+          <select id="boxSelect"></select>
+        </label>
+        <label class="control">
+          <span>Slots</span>
+          <input id="slotCount" type="number" min="4" max="16" step="1" value="9">
+        </label>
+        <button id="refreshBtn" type="button">Refresh</button>
+        <button id="clearBtn" type="button">Clear stage</button>
+        <div id="transportStatus" class="transport-status">Transport idle</div>
+        <div id="transportMeter" class="transport-meter hidden">
+          <div class="meter-head">
+            <span id="loopIndexText">Loop 1/2</span>
+            <span id="loopProgressText">0%</span>
+          </div>
+          <div class="meter-track">
+            <div id="loopProgressFill" class="meter-fill"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage-wrap">
+        <div id="stage" class="stage"></div>
+      </section>
+
+      <section class="palette-wrap">
+        <h2>Character Palette</h2>
+        <div id="palette" class="palette"></div>
+      </section>
+    </main>
+
+    <template id="paletteItemTpl">
+      <button class="palette-item" draggable="true" type="button">
+        <span class="name"></span>
+        <span class="role"></span>
+      </button>
+    </template>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+  </html>

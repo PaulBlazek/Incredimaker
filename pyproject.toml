@@ -1,0 +1,32 @@
+[project]
+name = "incredimaker"
+version = "0.1.0"
+description = "Split songs into non-overlapping character parts for Incredibox-style remixing."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "demucs>=4.0.1,<5",
+  "flask>=3.0.0,<4",
+  "librosa>=0.10.2,<1",
+  "numpy>=1.26,<3",
+  "soundfile>=0.12.1,<1",
+  "torch>=2.6,<2.9",
+  "torchaudio>=2.6,<2.9",
+]
+
+[project.scripts]
+incredimaker = "incredimaker.cli:main"
+incredimaker-web = "incredimaker.webapp:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+incredimaker = ["web/templates/*.html", "web/static/*.css", "web/static/*.js"]

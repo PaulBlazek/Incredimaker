@@ -1,0 +1,216 @@
+:root {
+  --bg: #f1e5d1;
+  --panel: #f8f0e2;
+  --ink: #1e2630;
+  --accent: #d2551f;
+  --accent-soft: #f7c8aa;
+  --slot: #fff8ee;
+  --slot-border: #d7b892;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top right, #ffd49d, transparent 28%),
+    radial-gradient(circle at bottom left, #f0bcb7, transparent 34%),
+    var(--bg);
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
+  padding: 18px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  background: var(--panel);
+  border: 2px solid var(--slot-border);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.transport-status {
+  margin-left: auto;
+  align-self: center;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 2px solid var(--slot-border);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.transport-meter {
+  min-width: 180px;
+  padding: 6px 8px;
+  border: 2px solid var(--slot-border);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.transport-meter.hidden {
+  display: none;
+}
+
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.meter-track {
+  width: 100%;
+  height: 10px;
+  border: 1px solid var(--slot-border);
+  border-radius: 999px;
+  background: #f3e5d0;
+  overflow: hidden;
+}
+
+.meter-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #d2551f, #ef965f);
+}
+
+.control {
+  display: grid;
+  gap: 5px;
+  min-width: 180px;
+}
+
+.control span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+select,
+input,
+button {
+  font: inherit;
+  border-radius: 10px;
+  border: 2px solid var(--slot-border);
+  padding: 8px 10px;
+  background: #fff;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+.stage-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.stage {
+  width: min(90vw, 780px);
+  min-height: min(58vh, 620px);
+  background: linear-gradient(180deg, #fff7ea, #f8ecd9);
+  border: 3px solid var(--slot-border);
+  border-radius: 20px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  align-content: center;
+}
+
+.slot {
+  border: 2px dashed var(--slot-border);
+  border-radius: 14px;
+  background: var(--slot);
+  display: grid;
+  place-items: center;
+  min-height: 100px;
+  text-align: center;
+  padding: 8px;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.slot.over {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.slot .hint {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.slot .assigned {
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.slot .pending {
+  font-size: 11px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.palette-wrap {
+  background: var(--panel);
+  border: 2px solid var(--slot-border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.palette-wrap h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.palette-item {
+  min-height: 84px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 2px solid var(--slot-border);
+  background: #fffdf8;
+}
+
+.palette-item .name {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.palette-item .role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .stage {
+    min-height: 50vh;
+  }
+  .slot {
+    min-height: 84px;
+  }
+}
