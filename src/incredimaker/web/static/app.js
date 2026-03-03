@@ -1,12 +1,3 @@
-const preferredByRole = {
-  beat: "top-left",
-  bass: "top-right",
-  fx: "top-right",
-  harmony: "bottom-left",
-  melody: "bottom-right",
-  vocals: "bottom-right",
-};
-
 const rolePriority = ["beat", "bass", "fx", "harmony", "melody", "vocals"];
 
 const state = {
@@ -49,22 +40,6 @@ function sortedCharacters(chars) {
 function characterLabel(charInfo) {
   const [, n] = charInfo.id.split("_");
   return `${charInfo.role} ${n || ""}`.trim();
-}
-
-function getQuadrantForPosition(rowIndex, colIndex, rows, cols) {
-  const top = rowIndex < rows / 2;
-  const left = colIndex < cols / 2;
-  if (top && left) return "top-left";
-  if (top && !left) return "top-right";
-  if (!top && left) return "bottom-left";
-  return "bottom-right";
-}
-
-function getHintForQuadrant(quadrant) {
-  if (quadrant === "top-left") return "Beat";
-  if (quadrant === "top-right") return "Bass / FX";
-  if (quadrant === "bottom-left") return "Harmony";
-  return "Melody / Vocals";
 }
 
 function computeGrid(count) {
@@ -149,7 +124,12 @@ async function startCharacterInSlot(slot, charInfo, when) {
 
 async function scheduleSlotUpdate(slot, charInfo) {
   ensureAudioContext();
-  const boundary = nextLoopBoundary();
+  const isStartingFromSilence = !isAnyAudioPlaying() && !!charInfo;
+  let boundary = nextLoopBoundary();
+  if (isStartingFromSilence && state.audioCtx) {
+    boundary = state.audioCtx.currentTime + 0.02;
+    state.transportStart = boundary;
+  }
   slot.pending = true;
   slot.pendingCharId = charInfo ? charInfo.id : null;
   renderStage();
@@ -209,15 +189,12 @@ function createSlotNodes() {
   stageEl.innerHTML = "";
   const count = Number(slotCountInput.value) || 9;
   const safeCount = Math.min(Math.max(count, 4), 16);
-  const { cols, rows } = computeGrid(safeCount);
+  const { cols } = computeGrid(safeCount);
   stageEl.style.gridTemplateColumns = `repeat(${cols}, minmax(90px, 1fr))`;
 
   const existing = new Map(state.slots.map((slot) => [slot.id, slot]));
   state.slots = Array.from({ length: safeCount }, (_, i) => {
-    const row = Math.floor(i / cols);
-    const col = i % cols;
-    const quadrant = getQuadrantForPosition(row, col, rows, cols);
-    return existing.get(i) || { id: i, charId: null, pending: false, pendingCharId: null, quadrant };
+    return existing.get(i) || { id: i, charId: null, pending: false, pendingCharId: null };
   });
 
   for (const oldSlotId of existing.keys()) {
@@ -240,7 +217,7 @@ function renderStage() {
     if (assigned) {
       el.innerHTML = `<div class="assigned">${characterLabel(assigned)}</div><div class="hint">Double-click: mute next loop</div>`;
     } else {
-      el.innerHTML = `<div class="hint">${getHintForQuadrant(slot.quadrant)}</div>`;
+      el.innerHTML = `<div class="hint">Drop character here</div>`;
     }
     if (slot.pending && pending) {
       const p = document.createElement("div");
@@ -275,13 +252,6 @@ function renderStage() {
   }
 }
 
-function preferredSlotIdForRole(role) {
-  const targetQuadrant = preferredByRole[role];
-  if (!targetQuadrant) return null;
-  const preferred = state.slots.find((slot) => slot.quadrant === targetQuadrant && !slot.charId);
-  return preferred ? preferred.id : null;
-}
-
 async function preloadCharacters() {
   ensureAudioContext();
   for (const c of state.currentBox.characters) {
@@ -308,11 +278,8 @@ function renderPalette(characters) {
     });
     node.addEventListener("click", () => {
       ensureAudioContext();
-      const preferredSlotId = preferredSlotIdForRole(charInfo.role);
       const fallback = state.slots.find((slot) => !slot.charId);
-      if (preferredSlotId !== null) {
-        assignCharacterToSlot(preferredSlotId, charInfo.id);
-      } else if (fallback) {
+      if (fallback) {
         assignCharacterToSlot(fallback.id, charInfo.id);
       }
     });
