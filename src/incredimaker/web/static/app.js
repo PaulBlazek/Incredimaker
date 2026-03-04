@@ -11,6 +11,9 @@ const state = {
   players: new Map(), // slotId -> {source, gain, charId}
   bufferCache: new Map(), // charId -> AudioBuffer
   transportRafId: null,
+  autoModeEnabled: false,
+  autoLastLoopNumber: -1,
+  autoBusy: false,
 };
 
 const boxSelect = document.getElementById("boxSelect");
@@ -24,6 +27,7 @@ const transportMeter = document.getElementById("transportMeter");
 const loopIndexText = document.getElementById("loopIndexText");
 const loopProgressText = document.getElementById("loopProgressText");
 const loopProgressFill = document.getElementById("loopProgressFill");
+const autoModeToggle = document.getElementById("autoModeToggle");
 const paletteTpl = document.getElementById("paletteItemTpl");
 
 function sortedCharacters(chars) {
@@ -39,7 +43,8 @@ function sortedCharacters(chars) {
 
 function characterLabel(charInfo) {
   const [, n] = charInfo.id.split("_");
-  return `${charInfo.role} ${n || ""}`.trim();
+  const loopMultiple = Math.max(1, Number(charInfo.loop_multiple) || 1);
+  return `${charInfo.role} ${n || ""} [x${loopMultiple}]`.trim();
 }
 
 function computeGrid(count) {
@@ -89,8 +94,32 @@ function stopPlayer(slotId, when) {
   state.players.delete(slotId);
 }
 
+function clearSlotPlaybackImmediately(slot) {
+  if (!state.audioCtx) return;
+  const now = state.audioCtx.currentTime + 0.005;
+  stopPlayer(slot.id, now);
+  slot.charId = null;
+  slot.pending = false;
+  slot.pendingCharId = null;
+  if (!isAnyAudioPlaying()) {
+    state.transportStart = null;
+    state.autoLastLoopNumber = -1;
+  }
+}
+
 function isAnyAudioPlaying() {
   return state.players.size > 0;
+}
+
+function getActiveMaxLoopMultiple() {
+  let maxMultiple = 1;
+  for (const player of state.players.values()) {
+    const charInfo = getCharacterById(player.charId);
+    if (!charInfo) continue;
+    const loopMultiple = Math.max(1, Number(charInfo.loop_multiple) || 1);
+    if (loopMultiple > maxMultiple) maxMultiple = loopMultiple;
+  }
+  return maxMultiple;
 }
 
 async function getBuffer(charId) {
@@ -120,6 +149,66 @@ async function startCharacterInSlot(slot, charInfo, when) {
   source.start(when);
 
   state.players.set(slot.id, { source, gain, charId: charInfo.id });
+}
+
+function randomIntInclusive(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pickRandom(items) {
+  if (!items.length) return null;
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function getLoopNumberNow() {
+  if (!state.audioCtx || state.transportStart === null) return 0;
+  const elapsed = Math.max(0, state.audioCtx.currentTime - state.transportStart);
+  return Math.floor(elapsed / getCurrentLoopSeconds());
+}
+
+async function addCharacterImmediatelyToSlot(slot, charInfo) {
+  if (!state.audioCtx) return;
+  const when = state.audioCtx.currentTime + 0.02;
+  await startCharacterInSlot(slot, charInfo, when);
+  slot.charId = charInfo.id;
+  slot.pending = false;
+  slot.pendingCharId = null;
+}
+
+async function runAutoModeForLoop() {
+  if (state.autoBusy || !state.currentBox || !state.audioCtx) return;
+  state.autoBusy = true;
+  try {
+    const actions = randomIntInclusive(1, 3);
+    for (let i = 0; i < actions; i += 1) {
+      const filledSlots = state.slots.filter((s) => !!s.charId);
+      const emptySlots = state.slots.filter((s) => !s.charId);
+      const activeIds = new Set(filledSlots.map((s) => s.charId));
+      const inactiveChars = state.currentBox.characters.filter((c) => !activeIds.has(c.id));
+
+      const canRemove = filledSlots.length > 0;
+      const canAdd = emptySlots.length > 0 && inactiveChars.length > 0;
+      if (!canRemove && !canAdd) break;
+
+      const shouldAdd = canAdd && (!canRemove || Math.random() < 0.55);
+      if (shouldAdd) {
+        const targetSlot = pickRandom(emptySlots);
+        const charInfo = pickRandom(inactiveChars);
+        if (targetSlot && charInfo) {
+          await addCharacterImmediatelyToSlot(targetSlot, charInfo);
+        }
+      } else {
+        const targetSlot = pickRandom(filledSlots);
+        if (targetSlot) {
+          clearSlotPlaybackImmediately(targetSlot);
+        }
+      }
+    }
+  } finally {
+    state.autoBusy = false;
+    renderStage();
+    updateTransportStatus();
+  }
 }
 
 async function scheduleSlotUpdate(slot, charInfo) {
@@ -155,6 +244,8 @@ function stopAllPlayersNow() {
     slot.pending = false;
     slot.pendingCharId = null;
   }
+  state.transportStart = null;
+  state.autoLastLoopNumber = -1;
   renderStage();
   updateTransportStatus();
 }
@@ -173,16 +264,25 @@ function getCharacterById(charId) {
 function assignCharacterToSlot(slotId, charId) {
   const charInfo = getCharacterById(charId);
   if (!charInfo) return;
+  ensureAudioContext();
 
+  const targetSlot = state.slots.find((s) => s.id === slotId);
+  if (!targetSlot) return;
+
+  // Moving/replacing via drop should mute previous audio immediately.
   for (const slot of state.slots) {
     if (slot.id !== slotId && slot.charId === charId) {
-      scheduleSlotUpdate(slot, null).catch(console.error);
+      clearSlotPlaybackImmediately(slot);
     }
   }
 
-  const slot = state.slots.find((s) => s.id === slotId);
-  if (!slot) return;
-  scheduleSlotUpdate(slot, charInfo).catch(console.error);
+  if (targetSlot.charId && targetSlot.charId !== charId) {
+    clearSlotPlaybackImmediately(targetSlot);
+  }
+
+  renderStage();
+  updateTransportStatus();
+  scheduleSlotUpdate(targetSlot, charInfo).catch(console.error);
 }
 
 function createSlotNodes() {
@@ -215,7 +315,7 @@ function renderStage() {
     el.dataset.slotId = String(slot.id);
 
     if (assigned) {
-      el.innerHTML = `<div class="assigned">${characterLabel(assigned)}</div><div class="hint">Double-click: mute next loop</div>`;
+      el.innerHTML = `<div class="assigned">${characterLabel(assigned)}</div><div class="hint">Click: remove now</div>`;
     } else {
       el.innerHTML = `<div class="hint">Drop character here</div>`;
     }
@@ -244,8 +344,12 @@ function renderStage() {
       const charId = event.dataTransfer.getData("text/plain");
       if (charId) assignCharacterToSlot(slot.id, charId);
     });
-    el.addEventListener("dblclick", () => {
-      scheduleSlotUpdate(slot, null).catch(console.error);
+    el.addEventListener("click", () => {
+      if (!slot.charId) return;
+      ensureAudioContext();
+      clearSlotPlaybackImmediately(slot);
+      renderStage();
+      updateTransportStatus();
     });
 
     stageEl.appendChild(el);
@@ -269,7 +373,7 @@ function renderPalette(characters) {
   for (const charInfo of ordered) {
     const node = paletteTpl.content.firstElementChild.cloneNode(true);
     node.querySelector(".name").textContent = characterLabel(charInfo);
-    node.querySelector(".role").textContent = `${charInfo.role} x${charInfo.loop_multiple || 1}`;
+    node.querySelector(".role").textContent = `${charInfo.role} loop`;
 
     node.addEventListener("dragstart", (event) => {
       ensureAudioContext();
@@ -324,11 +428,25 @@ function updateTransportMeterFrame() {
   const elapsed = Math.max(0, state.audioCtx.currentTime - state.transportStart);
   const loopPhase = elapsed % loopSeconds;
   const progress = loopPhase / loopSeconds;
-  const loopIndex = (Math.floor(elapsed / loopSeconds) % 2) + 1;
+  const maxLoopMultiple = getActiveMaxLoopMultiple();
+  const loopIndex = (Math.floor(elapsed / loopSeconds) % maxLoopMultiple) + 1;
 
-  loopIndexText.textContent = `Loop ${loopIndex}/2`;
+  if (maxLoopMultiple > 1) {
+    loopIndexText.classList.remove("hidden");
+    loopIndexText.textContent = `Loop ${loopIndex}/${maxLoopMultiple}`;
+  } else {
+    loopIndexText.classList.add("hidden");
+  }
   loopProgressText.textContent = `${Math.round(progress * 100)}%`;
   loopProgressFill.style.width = `${(progress * 100).toFixed(1)}%`;
+
+  if (state.autoModeEnabled) {
+    const loopNumber = getLoopNumberNow();
+    if (loopNumber !== state.autoLastLoopNumber) {
+      state.autoLastLoopNumber = loopNumber;
+      runAutoModeForLoop().catch(console.error);
+    }
+  }
 
   state.transportRafId = window.requestAnimationFrame(updateTransportMeterFrame);
 }
@@ -343,6 +461,7 @@ function stopTransportMeter() {
     window.cancelAnimationFrame(state.transportRafId);
     state.transportRafId = null;
   }
+  loopIndexText.classList.add("hidden");
   loopIndexText.textContent = "Loop 1/2";
   loopProgressText.textContent = "0%";
   loopProgressFill.style.width = "0%";
@@ -399,6 +518,17 @@ refreshBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
   clearStageQuantized();
+});
+
+autoModeToggle.addEventListener("change", () => {
+  state.autoModeEnabled = !!autoModeToggle.checked;
+  if (state.autoModeEnabled) {
+    state.autoLastLoopNumber = -1;
+    if (!isAnyAudioPlaying()) {
+      ensureAudioContext();
+      runAutoModeForLoop().catch(console.error);
+    }
+  }
 });
 
 window.addEventListener("pointerdown", () => {
