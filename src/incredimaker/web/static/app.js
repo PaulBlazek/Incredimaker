@@ -14,6 +14,7 @@ const state = {
   autoModeEnabled: false,
   autoLastLoopNumber: -1,
   autoBusy: false,
+  autoTimerId: null,
   isPaused: false,
   custom: {
     hiddenIds: new Set(),
@@ -233,6 +234,16 @@ function getLoopNumberNow() {
   return Math.floor(elapsed / getCurrentLoopSeconds());
 }
 
+function desiredAddProbability(activeCount, totalSlots) {
+  if (totalSlots <= 0) return 0.5;
+  const fill = activeCount / totalSlots;
+  if (fill <= 0.2) return 0.9;
+  if (fill <= 0.35) return 0.78;
+  if (fill <= 0.55) return 0.55;
+  if (fill <= 0.75) return 0.3;
+  return 0.15;
+}
+
 async function addCharacterImmediatelyToSlot(slot, charInfo) {
   if (!state.audioCtx) return;
   const when = state.audioCtx.currentTime + 0.02;
@@ -257,11 +268,13 @@ async function runAutoModeForLoop() {
       const activeIds = new Set(filledSlots.map((s) => s.charId));
       const inactiveChars = eligibleCharacters.filter((c) => !activeIds.has(c.id));
 
-      const canRemove = filledSlots.length > 0;
+      // Never allow auto mode to clear the stage completely once audio is running.
+      const canRemove = filledSlots.length > 1;
       const canAdd = emptySlots.length > 0 && inactiveChars.length > 0;
       if (!canRemove && !canAdd) break;
 
-      const shouldAdd = canAdd && (!canRemove || Math.random() < 0.55);
+      const addChance = desiredAddProbability(filledSlots.length, state.slots.length);
+      const shouldAdd = canAdd && (!canRemove || Math.random() < addChance);
       if (shouldAdd) {
         const targetSlot = pickRandom(emptySlots);
         const charInfo = pickRandom(inactiveChars);
@@ -280,6 +293,28 @@ async function runAutoModeForLoop() {
     renderStage();
     updateTransportStatus();
   }
+}
+
+function maybeRunAutoForCurrentLoop() {
+  if (!state.autoModeEnabled || state.isPaused || !isAnyAudioPlaying()) return;
+  const loopNumber = getLoopNumberNow();
+  if (loopNumber !== state.autoLastLoopNumber) {
+    state.autoLastLoopNumber = loopNumber;
+    runAutoModeForLoop().catch(console.error);
+  }
+}
+
+function ensureAutoTimer() {
+  if (state.autoTimerId !== null) return;
+  state.autoTimerId = window.setInterval(() => {
+    maybeRunAutoForCurrentLoop();
+  }, 250);
+}
+
+function stopAutoTimer() {
+  if (state.autoTimerId === null) return;
+  window.clearInterval(state.autoTimerId);
+  state.autoTimerId = null;
 }
 
 async function scheduleSlotUpdate(slot, charInfo) {
@@ -609,6 +644,11 @@ function updateTransportStatus() {
   const pausedLabel = state.isPaused ? " | Paused" : "";
   transportStatus.textContent = `Loop ${loopSec}s | Active ${active}${pausedLabel}`;
   updateTransportMeterVisibility();
+  if (state.autoModeEnabled && !state.isPaused && isAnyAudioPlaying()) {
+    ensureAutoTimer();
+  } else {
+    stopAutoTimer();
+  }
 }
 
 function updateTransportMeterVisibility() {
@@ -642,13 +682,7 @@ function updateTransportMeterFrame() {
   loopProgressText.textContent = `${Math.round(progress * 100)}%`;
   loopProgressFill.style.width = `${(progress * 100).toFixed(1)}%`;
 
-  if (state.autoModeEnabled && !state.isPaused) {
-    const loopNumber = getLoopNumberNow();
-    if (loopNumber !== state.autoLastLoopNumber) {
-      state.autoLastLoopNumber = loopNumber;
-      runAutoModeForLoop().catch(console.error);
-    }
-  }
+  maybeRunAutoForCurrentLoop();
 
   state.transportRafId = window.requestAnimationFrame(updateTransportMeterFrame);
 }
@@ -731,7 +765,7 @@ refreshBtn.addEventListener("click", () => {
 });
 
 clearBtn.addEventListener("click", () => {
-  clearStageQuantized();
+  stopAllPlayersNow();
 });
 
 autoModeToggle.addEventListener("change", () => {
@@ -742,6 +776,9 @@ autoModeToggle.addEventListener("change", () => {
       ensureAudioContext();
       runAutoModeForLoop().catch(console.error);
     }
+    ensureAutoTimer();
+  } else {
+    stopAutoTimer();
   }
 });
 
