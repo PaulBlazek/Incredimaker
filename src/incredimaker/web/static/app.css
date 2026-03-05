@@ -271,6 +271,41 @@ button:hover {
   font-size: 12px;
 }
 
+.role-colors {
+  display: grid;
+  gap: 8px;
+}
+
+#roleColorEditor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.role-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 2px solid var(--slot-border);
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.role-color-row label {
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.role-color-row input[type="color"] {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
 @media (max-width: 760px) {
   .stage {
     min-height: 220px;

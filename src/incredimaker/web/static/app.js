@@ -1,4 +1,12 @@
 const rolePriority = ["beat", "bass", "fx", "harmony", "melody", "vocals"];
+const defaultRoleColors = {
+  beat: "#b9dcbf",
+  bass: "#d2d2d6",
+  fx: "#f3e8b2",
+  harmony: "#e9c4c2",
+  melody: "#c7d8f0",
+  vocals: "#f7f7f7",
+};
 
 const state = {
   boxes: [],
@@ -19,6 +27,7 @@ const state = {
   custom: {
     hiddenIds: new Set(),
     images: {},
+    roleColors: { ...defaultRoleColors },
   },
 };
 
@@ -44,6 +53,8 @@ const stageImageControl = document.getElementById("stageImageControl");
 const clearImagesBtn = document.getElementById("clearImagesBtn");
 const hideCharBtn = document.getElementById("hideCharBtn");
 const hiddenCharList = document.getElementById("hiddenCharList");
+const roleColorEditor = document.getElementById("roleColorEditor");
+const resetRoleColorsBtn = document.getElementById("resetRoleColorsBtn");
 
 function sortedCharacters(chars) {
   return [...chars].sort((a, b) => {
@@ -88,17 +99,33 @@ function getStageImage(charId) {
   return cfg.palette || null;
 }
 
+function roleColor(role) {
+  return state.custom.roleColors[role] || defaultRoleColors[role] || "#e8e8e8";
+}
+
+function hexToRgba(hex, alpha) {
+  const raw = hex.replace("#", "");
+  const normalized = raw.length === 3
+    ? raw.split("").map((c) => c + c).join("")
+    : raw.padEnd(6, "0").slice(0, 6);
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function saveCustomState() {
   if (!state.currentBoxId) return;
   const payload = {
     hiddenIds: [...state.custom.hiddenIds],
     images: state.custom.images,
+    roleColors: state.custom.roleColors,
   };
   localStorage.setItem(customStorageKey(state.currentBoxId), JSON.stringify(payload));
 }
 
 function loadCustomState() {
-  state.custom = { hiddenIds: new Set(), images: {} };
+  state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
   if (!state.currentBoxId) return;
   try {
     const raw = localStorage.getItem(customStorageKey(state.currentBoxId));
@@ -106,8 +133,10 @@ function loadCustomState() {
     const parsed = JSON.parse(raw);
     state.custom.hiddenIds = new Set(Array.isArray(parsed.hiddenIds) ? parsed.hiddenIds : []);
     state.custom.images = typeof parsed.images === "object" && parsed.images ? parsed.images : {};
+    const loadedRoleColors = typeof parsed.roleColors === "object" && parsed.roleColors ? parsed.roleColors : {};
+    state.custom.roleColors = { ...defaultRoleColors, ...loadedRoleColors };
   } catch (_err) {
-    state.custom = { hiddenIds: new Set(), images: {} };
+    state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
   }
 }
 
@@ -419,8 +448,13 @@ function renderStage() {
     const el = document.createElement("div");
     el.className = "slot";
     el.dataset.slotId = String(slot.id);
+    el.style.background = "";
+    el.style.borderColor = "";
 
     if (assigned) {
+      const tint = roleColor(assigned.role);
+      el.style.background = `linear-gradient(180deg, ${hexToRgba(tint, 0.38)}, #fffaf0)`;
+      el.style.borderColor = hexToRgba(tint, 0.95);
       const stageImage = getStageImage(assigned.id);
       if (stageImage) {
         el.innerHTML = `<img class="stage-image" src="${stageImage}" alt=""><div class="hint">Click: remove now</div>`;
@@ -490,6 +524,9 @@ function renderPalette(characters) {
     const thumb = node.querySelector(".thumb");
     const name = node.querySelector(".name");
     const role = node.querySelector(".role");
+    const tint = roleColor(charInfo.role);
+    node.style.background = `linear-gradient(180deg, ${hexToRgba(tint, 0.46)}, #fffdf8)`;
+    node.style.borderColor = hexToRgba(tint, 0.95);
     const paletteImage = getPaletteImage(charInfo.id);
     if (paletteImage) {
       thumb.src = paletteImage;
@@ -603,10 +640,35 @@ function renderHiddenCharList() {
   }
 }
 
+function renderRoleColorEditor() {
+  roleColorEditor.innerHTML = "";
+  for (const role of rolePriority) {
+    const row = document.createElement("div");
+    row.className = "role-color-row";
+
+    const label = document.createElement("label");
+    label.textContent = role === "vocals" ? "vocal" : role;
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = roleColor(role);
+    input.addEventListener("input", () => {
+      state.custom.roleColors[role] = input.value;
+      saveCustomState();
+      renderPalette(getVisibleCharacters());
+      renderStage();
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    roleColorEditor.appendChild(row);
+  }
+}
+
 function renderCustomizationPanel() {
   if (!state.currentBox) {
     customCharSelect.innerHTML = "";
     hiddenCharList.textContent = "";
+    roleColorEditor.innerHTML = "";
     return;
   }
   const allChars = sortedCharacters(state.currentBox.characters);
@@ -636,6 +698,7 @@ function renderCustomizationPanel() {
     hideCharBtn.textContent = "Hide Character";
   }
   renderHiddenCharList();
+  renderRoleColorEditor();
 }
 
 function updateTransportStatus() {
@@ -737,7 +800,7 @@ async function loadBoxes() {
     state.currentBoxId = null;
     state.currentBox = null;
     paletteEl.innerHTML = "<p>No boxes found in library directory.</p>";
-    state.custom = { hiddenIds: new Set(), images: {} };
+    state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
     renderCustomizationPanel();
     stopAllPlayersNow();
     updateTransportStatus();
@@ -850,6 +913,16 @@ hideCharBtn.addEventListener("click", () => {
   renderPalette(getVisibleCharacters());
   renderStage();
   updateTransportStatus();
+});
+
+resetRoleColorsBtn.addEventListener("click", () => {
+  const ok = window.confirm("Reset all role colors for this Incredibox to defaults?");
+  if (!ok) return;
+  state.custom.roleColors = { ...defaultRoleColors };
+  saveCustomState();
+  renderCustomizationPanel();
+  renderPalette(getVisibleCharacters());
+  renderStage();
 });
 
 function updatePauseButton() {
