@@ -14,6 +14,7 @@ const state = {
   autoModeEnabled: false,
   autoLastLoopNumber: -1,
   autoBusy: false,
+  isPaused: false,
 };
 
 const boxSelect = document.getElementById("boxSelect");
@@ -22,6 +23,7 @@ const stageEl = document.getElementById("stage");
 const paletteEl = document.getElementById("palette");
 const refreshBtn = document.getElementById("refreshBtn");
 const clearBtn = document.getElementById("clearBtn");
+const pauseBtn = document.getElementById("pauseBtn");
 const transportStatus = document.getElementById("transportStatus");
 const transportMeter = document.getElementById("transportMeter");
 const loopIndexText = document.getElementById("loopIndexText");
@@ -61,14 +63,18 @@ function getCurrentLoopSeconds() {
   return state.currentBox?.loop_seconds || 4.0;
 }
 
-function ensureAudioContext() {
+function ensureAudioContext(forceResume = false) {
   if (!state.audioCtx) {
     state.audioCtx = new AudioContext();
     state.masterGain = state.audioCtx.createGain();
     state.masterGain.gain.value = 0.9;
     state.masterGain.connect(state.audioCtx.destination);
+    if (state.isPaused) {
+      state.audioCtx.suspend().catch(() => {});
+    }
   }
-  if (state.audioCtx.state !== "running") {
+  const shouldResume = forceResume || !state.isPaused;
+  if (shouldResume && state.audioCtx.state !== "running") {
     state.audioCtx.resume().catch(() => {});
   }
   if (state.transportStart === null) {
@@ -405,7 +411,8 @@ function populateBoxSelect(boxes) {
 function updateTransportStatus() {
   const loopSec = getCurrentLoopSeconds().toFixed(2);
   const active = state.slots.filter((s) => s.charId).length;
-  transportStatus.textContent = `Loop ${loopSec}s | Active ${active}`;
+  const pausedLabel = state.isPaused ? " | Paused" : "";
+  transportStatus.textContent = `Loop ${loopSec}s | Active ${active}${pausedLabel}`;
   updateTransportMeterVisibility();
 }
 
@@ -440,7 +447,7 @@ function updateTransportMeterFrame() {
   loopProgressText.textContent = `${Math.round(progress * 100)}%`;
   loopProgressFill.style.width = `${(progress * 100).toFixed(1)}%`;
 
-  if (state.autoModeEnabled) {
+  if (state.autoModeEnabled && !state.isPaused) {
     const loopNumber = getLoopNumberNow();
     if (loopNumber !== state.autoLastLoopNumber) {
       state.autoLastLoopNumber = loopNumber;
@@ -524,11 +531,28 @@ autoModeToggle.addEventListener("change", () => {
   state.autoModeEnabled = !!autoModeToggle.checked;
   if (state.autoModeEnabled) {
     state.autoLastLoopNumber = -1;
-    if (!isAnyAudioPlaying()) {
+    if (!state.isPaused && !isAnyAudioPlaying()) {
       ensureAudioContext();
       runAutoModeForLoop().catch(console.error);
     }
   }
+});
+
+function updatePauseButton() {
+  pauseBtn.textContent = state.isPaused ? "Resume" : "Pause";
+}
+
+pauseBtn.addEventListener("click", async () => {
+  state.isPaused = !state.isPaused;
+  ensureAudioContext();
+  if (!state.audioCtx) return;
+  if (state.isPaused) {
+    await state.audioCtx.suspend().catch(() => {});
+  } else {
+    await state.audioCtx.resume().catch(() => {});
+  }
+  updatePauseButton();
+  updateTransportStatus();
 });
 
 window.addEventListener("pointerdown", () => {
@@ -536,5 +560,6 @@ window.addEventListener("pointerdown", () => {
 }, { once: true });
 
 createSlotNodes();
+updatePauseButton();
 updateTransportStatus();
 loadBoxes().catch(console.error);
