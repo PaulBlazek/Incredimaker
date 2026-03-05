@@ -43,11 +43,39 @@
       <section class="palette-wrap">
         <h2>Character Palette</h2>
         <div id="palette" class="palette"></div>
+        <div class="customizer">
+          <h3>Character Customization</h3>
+          <label class="control">
+            <span>Character</span>
+            <select id="customCharSelect"></select>
+          </label>
+          <label class="control check-control">
+            <span>Separate Stage Image</span>
+            <input id="separateStageImageToggle" type="checkbox">
+          </label>
+          <label class="control">
+            <span>Palette Image (Square)</span>
+            <input id="paletteImageInput" type="file" accept="image/*">
+          </label>
+          <label id="stageImageControl" class="control hidden">
+            <span>Stage Image (Portrait)</span>
+            <input id="stageImageInput" type="file" accept="image/*">
+          </label>
+          <div class="customizer-actions">
+            <button id="clearImagesBtn" type="button">Clear Images</button>
+            <button id="hideCharBtn" type="button">Hide Character</button>
+          </div>
+          <div class="hidden-characters">
+            <h4>Hidden Characters</h4>
+            <div id="hiddenCharList"></div>
+          </div>
+        </div>
       </section>
     </main>
 
     <template id="paletteItemTpl">
       <button class="palette-item" draggable="true" type="button">
+        <img class="thumb hidden" alt="">
         <span class="name"></span>
         <span class="role"></span>
       </button>
