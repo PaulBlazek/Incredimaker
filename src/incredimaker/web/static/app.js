@@ -510,7 +510,7 @@ function renderPalette(characters) {
       event.dataTransfer.effectAllowed = "copyMove";
     });
     node.addEventListener("click", () => {
-      focusCharacterInCustomizer(charInfo.id, true);
+      focusCharacterInCustomizer(charInfo.id, false);
       ensureAudioContext();
       const fallback = state.slots.find((slot) => !slot.charId);
       if (fallback) {
