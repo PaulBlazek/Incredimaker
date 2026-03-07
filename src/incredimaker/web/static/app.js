@@ -24,6 +24,7 @@ const state = {
   autoBusy: false,
   autoTimerId: null,
   isPaused: false,
+  customSaveTimer: null,
   custom: {
     hiddenIds: new Set(),
     images: {},
@@ -36,6 +37,7 @@ const slotCountInput = document.getElementById("slotCount");
 const stageEl = document.getElementById("stage");
 const paletteEl = document.getElementById("palette");
 const refreshBtn = document.getElementById("refreshBtn");
+const exportBtn = document.getElementById("exportBtn");
 const clearBtn = document.getElementById("clearBtn");
 const pauseBtn = document.getElementById("pauseBtn");
 const transportStatus = document.getElementById("transportStatus");
@@ -71,10 +73,6 @@ function characterLabel(charInfo) {
   const [, n] = charInfo.id.split("_");
   const loopMultiple = Math.max(1, Number(charInfo.loop_multiple) || 1);
   return `${charInfo.role} ${n || ""} [x${loopMultiple}]`.trim();
-}
-
-function customStorageKey(boxId) {
-  return `incredimaker_custom_${boxId}`;
 }
 
 function getVisibleCharacters() {
@@ -114,30 +112,55 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function saveCustomState() {
-  if (!state.currentBoxId) return;
-  const payload = {
+function serializeCustomState() {
+  return {
     hiddenIds: [...state.custom.hiddenIds],
     images: state.custom.images,
     roleColors: state.custom.roleColors,
   };
-  localStorage.setItem(customStorageKey(state.currentBoxId), JSON.stringify(payload));
 }
 
-function loadCustomState() {
+function applyCustomState(data) {
+  const hidden = Array.isArray(data.hidden_ids) ? data.hidden_ids : [];
+  const images = typeof data.images === "object" && data.images ? data.images : {};
+  const loadedRoleColors = typeof data.role_colors === "object" && data.role_colors ? data.role_colors : {};
+  state.custom = {
+    hiddenIds: new Set(hidden.filter((x) => typeof x === "string")),
+    images,
+    roleColors: { ...defaultRoleColors, ...loadedRoleColors },
+  };
+}
+
+async function loadCustomState() {
   state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
   if (!state.currentBoxId) return;
   try {
-    const raw = localStorage.getItem(customStorageKey(state.currentBoxId));
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    state.custom.hiddenIds = new Set(Array.isArray(parsed.hiddenIds) ? parsed.hiddenIds : []);
-    state.custom.images = typeof parsed.images === "object" && parsed.images ? parsed.images : {};
-    const loadedRoleColors = typeof parsed.roleColors === "object" && parsed.roleColors ? parsed.roleColors : {};
-    state.custom.roleColors = { ...defaultRoleColors, ...loadedRoleColors };
+    const response = await fetch(`/api/boxes/${encodeURIComponent(state.currentBoxId)}/customization`);
+    if (!response.ok) return;
+    const data = await response.json();
+    applyCustomState(data);
   } catch (_err) {
-    state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
+    // Keep defaults if customization cannot be loaded.
   }
+}
+
+function saveCustomState() {
+  if (!state.currentBoxId) return;
+  if (state.customSaveTimer !== null) {
+    window.clearTimeout(state.customSaveTimer);
+  }
+  state.customSaveTimer = window.setTimeout(async () => {
+    state.customSaveTimer = null;
+    try {
+      await fetch(`/api/boxes/${encodeURIComponent(state.currentBoxId)}/customization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(serializeCustomState()),
+      });
+    } catch (_err) {
+      // Ignore transient save errors; UI state still remains active locally.
+    }
+  }, 120);
 }
 
 function computeGrid(count) {
@@ -773,10 +796,12 @@ async function activateBox(boxId) {
   stopAllPlayersNow();
   if (!state.currentBox) {
     paletteEl.innerHTML = "<p>No box selected.</p>";
+    exportBtn.disabled = true;
     renderCustomizationPanel();
     return;
   }
-  loadCustomState();
+  exportBtn.disabled = false;
+  await loadCustomState();
   const validIds = new Set(state.currentBox.characters.map((c) => c.id));
   state.custom.hiddenIds = new Set([...state.custom.hiddenIds].filter((id) => validIds.has(id)));
   for (const id of Object.keys(state.custom.images)) {
@@ -801,6 +826,7 @@ async function loadBoxes() {
     state.currentBox = null;
     paletteEl.innerHTML = "<p>No boxes found in library directory.</p>";
     state.custom = { hiddenIds: new Set(), images: {}, roleColors: { ...defaultRoleColors } };
+    exportBtn.disabled = true;
     renderCustomizationPanel();
     stopAllPlayersNow();
     updateTransportStatus();
@@ -825,6 +851,11 @@ slotCountInput.addEventListener("change", () => {
 
 refreshBtn.addEventListener("click", () => {
   loadBoxes().catch(console.error);
+});
+
+exportBtn.addEventListener("click", () => {
+  if (!state.currentBoxId) return;
+  window.location.href = `/api/boxes/${encodeURIComponent(state.currentBoxId)}/export`;
 });
 
 clearBtn.addEventListener("click", () => {
@@ -948,6 +979,7 @@ window.addEventListener("pointerdown", () => {
 
 createSlotNodes();
 updatePauseButton();
+exportBtn.disabled = true;
 renderCustomizationPanel();
 updateTransportStatus();
 loadBoxes().catch(console.error);

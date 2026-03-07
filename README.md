@@ -120,4 +120,26 @@ incredimaker "path\to\song-a.mp3" --output-dir library\song-a
 In the web UI:
 - characters are scheduled on loop boundaries (quantized add/remove)
 - active characters stay time-aligned to one transport clock
-- double-clicking a stage slot mutes it on the next loop boundary
+- clicking a stage slot removes it immediately
+
+## Share a Module
+
+Customizations (hidden characters, role colors, uploaded images) are stored in each module folder via:
+
+- `module.custom.json`
+- `assets/palette/...`
+- `assets/stage/...`
+
+In the web app, click `Export Module` to download a zip of the currently selected Incredibox.
+
+Your friend can use it by:
+
+1. Unzipping into their own `library/` folder
+2. Installing the project (`pip install -e .`)
+3. Running:
+
+```bash
+incredimaker-web --library-dir library --port 8000
+```
+
+4. Opening `http://127.0.0.1:8000`
